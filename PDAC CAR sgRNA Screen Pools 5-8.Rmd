@@ -1,6 +1,6 @@
 ---
 title: "PDAC sgRNA In Vivo Screen of Pools CP1406, CP1407, CP1408, CP1409"
-edited: November 19, 2021
+edited: December 17, 2021
 output:
   html_document:
     df_print: paged
@@ -15,35 +15,34 @@ library(here)
 library(ggrepel)
 ```
 
-###Importing Data and Barcode Files###
+###Importing Data and Annotation Files###
 ```{r}
 ## Create Filepath to Resources Folder ##
 Resources <- file.path("/Users", "dgoulet", "Desktop", "Data", "sgRNA_Screens", "Resources/")
 
 ## Import sgRNA Annotation Files ##
 Dummies <- readRDS(paste0(Resources, "Corrected Annotations for Complete SKY Library with Dummy Gene Controls.Rds"))
-Pool <- readRDS(paste0(Resources, "Corrected Annotations for Complete SKY Library.Rds"))
+Annotations <- readRDS(paste0(Resources, "Corrected Annotations for Complete SKY Library.Rds"))
 
 ## Filter Annotation File for Experimental Pools ##
-Pool1 <- Pool %>% dplyr::filter(Chip == "CP1406" | Chip == "CP1407")
-Pool2 <- Pool %>% dplyr::filter(Chip == "CP1408" | Chip == "CP1409")
-
+Pool1 <- Annotations %>% dplyr::filter(Chip == "CP1406" | Chip == "CP1407")
+Pool2 <- Annotations %>% dplyr::filter(Chip == "CP1408" | Chip == "CP1409")
 
 ## Import Lognorm sgRNA *In Vivo* Screen Data ##
 Plate_4A <- read.table(here("Raw Data", "counts-JD_GPP2968_2902063_Froese_20211012_P4_CP1406_CP1407.txt"),
                        header = T,sep = "\t")
-Plate_4B <- read.table(here("Raw Data", "counts-JD_GPP2968_2902063_Froese_20211012_P4_CP1408_CP1409.txt"), 
+Plate_4B <- read.table(here("Raw Data", "counts-JD_GPP2968_2902063_Froese_20211012_P4_CP1408_CP1409.txt"),
                        header = T, sep = "\t")
 Plate_5A <- read.table(here("Raw Data", "counts-JD_GPP2969_2902063_Froese_20211012_P5_CP1406_CP1407.txt"),
                        header = T,sep = "\t")
-Plate_5B <- read.table(here("Raw Data", "counts-JD_GPP2969_2902063_Froese_20211012_P5_CP1408_CP1409.txt"), 
+Plate_5B <- read.table(here("Raw Data", "counts-JD_GPP2969_2902063_Froese_20211012_P5_CP1408_CP1409.txt"),
                        header = T, sep = "\t")
 Plate_6A <- read.table(here("Raw Data", "counts-JD_GPP2970_2902063_Froese_20211012_P6_CP1406_CP1407.txt"),
                        header = T,sep = "\t")
-Plate_6B <- read.table(here("Raw Data", "counts-JD_GPP2970_2902063_Froese_20211012_P6_CP1408_CP1409.txt"), 
+Plate_6B <- read.table(here("Raw Data", "counts-JD_GPP2970_2902063_Froese_20211012_P6_CP1408_CP1409.txt"),
                        header = T, sep = "\t")
 
-## Concatenate Plates 
+## Concatenate Plates
 Plate_4 <- rbind(Plate_4A, Plate_4B)
 Plate_5 <- rbind(Plate_5A, Plate_5B)
 Plate_6 <- rbind(Plate_6A, Plate_6B)
@@ -66,19 +65,28 @@ colnames(long_raw) <- c("Barcode", "ID_Barcode", "Sample", "Counts")
 
 long_raw$Sample <- str_replace_all(long_raw$Sample, "[.]", "_")
 long_raw$Sample <- str_replace(long_raw$Sample, "__", "_")
-
 ```
 
-
-###Calculate Read Counts by Sample and Library Coverage###
-```{r}
 ## Compile Names of Samples in Each Pool ##
+```{r}
 Pool1_All <- grep("Pool_5_6", unique(long_raw$Sample), value = T)
 Pool2_All <- grep("Pool_7_8", unique(long_raw$Sample), value = T)
 
-Pool1_Targets <- long_raw %>% dplyr::filter(Barcode %in% Pool1$Barcode.Sequence) %>% group_by(Sample) %>% summarise(Mean = mean(Counts), Total = sum(Counts), Coverage = sum(Counts)/4093)
+Pool1_V3 <- grep("hEGFRv3", Pool1_All)
+Pool1_CD19 <- grep("hCD19", Pool1_All)
 
-Pool2_Targets <- long_raw %>% dplyr::filter(Barcode %in% Pool2$Barcode.Sequence) %>% group_by(Sample) %>% summarise(Mean = mean(Counts), Total = sum(Counts), Coverage = sum(Counts)/4094)
+Pool2_V3 <- grep("hEGFRv3", Pool2_All)
+Pool2_CD19 <- grep("hCD19", Pool2_All)
+
+Pool1_inputs <- grep("Input", Pool1_All, value = T)
+Pool2_inputs <- grep("Input", Pool2_All, value = T)
+```
+
+###Calculate Read Counts by Sample and Library Coverage###
+```{r}
+Pool1_Targets <- long_raw %>% dplyr::filter(Barcode %in% Pool1$Barcode) %>% group_by(Sample) %>% summarise(Mean = mean(Counts), Total = sum(Counts), Coverage = sum(Counts)/4093)
+
+Pool2_Targets <- long_raw %>% dplyr::filter(Barcode %in% Pool2$Barcode) %>% group_by(Sample) %>% summarise(Mean = mean(Counts), Total = sum(Counts), Coverage = sum(Counts)/4094)
 
 Pool_Coverage <- data.frame(cbind(Pool1_Targets$Sample, Pool1_Targets$Total, Pool2_Targets$Total))
 
@@ -121,23 +129,19 @@ long_norm2 <- long_raw2 %>% mutate(log2RPM = log((Counts/Total)*1000000+1, base 
 
 ###Input Normalization###
 ```{r}
-## Extract Input Sample Names ##
-Pool1_inputs <- grep("Input", Pool1_All, value = T)
-Pool2_inputs <- grep("Input", Pool2_All, value = T)
-
 ## Calculate Average log2RPM by Barcode for Input Samples ##
 Pool1_avg_input <- long_norm1 %>% dplyr::filter(Sample %in% Pool1_inputs) %>% group_by(Barcode) %>% mutate(avg = mean(log2RPM)) %>% distinct(Barcode, .keep_all = TRUE)
 Pool2_avg_input <- long_norm2 %>% dplyr::filter(Sample %in% Pool2_inputs) %>% group_by(Barcode) %>% mutate(avg = mean(log2RPM)) %>% distinct(Barcode, .keep_all = TRUE)
 
 ## Subtract Input ##
 log2RPM_Pool1 <- left_join(long_norm1, Pool1_avg_input, by = "Barcode")
-log2RPM_Pool1 <- log2RPM_Pool1[,c(1:4,6,12)]
-colnames(log2RPM_Pool1) <- c("Barcode", "ID_Barcode","Sample", "Counts", "log2RPM", "Input")
+log2RPM_Pool1 <- log2RPM_Pool1[,c("Barcode", "ID_Barcode", "Sample", "Counts","log2RPM", "Pool1_avg_input")]
+colnames(log2RPM_Pool1)[6] <- "Input"
 norm_Pool1 <- log2RPM_Pool1 %>% mutate(Norm = log2RPM - Input)
 
 log2RPM_Pool2 <- left_join(long_norm2, Pool2_avg_input, by = "Barcode")
-log2RPM_Pool2 <- log2RPM_Pool2[,c(1:4,6,12)]
-colnames(log2RPM_Pool2) <- c("Barcode", "ID_Barcode","Sample", "Counts", "log2RPM", "Input")
+log2RPM_Pool2 <- log2RPM_Pool2[,c("Barcode", "ID_Barcode", "Sample", "Counts","log2RPM", "Pool2_avg_input")]
+colnames(log2RPM_Pool2)[6] <- "Input"
 norm_Pool2 <- log2RPM_Pool2 %>% mutate(Norm = log2RPM - Input)
 norm_Pool <- rbind(norm_Pool1, norm_Pool2)
 
@@ -149,7 +153,7 @@ saveRDS(norm_Pool2, here("Raw Data", "Input Normalized Pool 2 Data.Rds"))
 ```{r}
 library(PCAtools)
 ## Check Input Subtraction of Data ##
-p <- norm_Pool1 %>% dplyr::filter(Sample == "Pool_5_6_hCD19_11_CP1406_CP1407") %>% 
+p <- norm_Pool1 %>% dplyr::filter(Pool1_inputs[1]) %>%
   ggplot(aes(x=Norm))+
   geom_density(fill="white")+
   scale_y_log10() +
@@ -157,6 +161,19 @@ p <- norm_Pool1 %>% dplyr::filter(Sample == "Pool_5_6_hCD19_11_CP1406_CP1407") %
   theme_classic() +
   ylab("Log-10 Number of Guides") +
   labs(title = "Pool 1 Input 1 Input-Normalized Log2 Fold-Change")
+
+ggsave(p, here("QC", "Pool 1 Input-Subtracted Input Sample.pdf"), height = 5, width = 5, units = "in")
+
+q <- norm_Pool2 %>% dplyr::filter(Pool2_inputs[1]) %>%
+  ggplot(aes(x=Norm))+
+  geom_density(fill="white")+
+  scale_y_log10() +
+  scale_x_continuous(limits = c(-2,2)) +
+  theme_classic() +
+  ylab("Log-10 Number of Guides") +
+  labs(title = "Pool 2 Input 1 Input-Normalized Log2 Fold-Change")
+
+ggsave(q, here("QC", "Pool 2 Input-Subtracted Input Sample.pdf"), height = 5, width = 5, units = "in")
 
 ## Convert Input Normalized Pool 1 Data to Wide Format ##
 norm_wide1 <- pivot_wider(norm_Pool1, id_cols = Barcode, names_from = Sample, values_from = Norm)
@@ -222,21 +239,21 @@ write.table(Euclidean_Pool2, here("QC", "Euclidean Distance for Pool 2.txt"), co
 library(pheatmap)
 library(viridis)
 Pool1_Heatmap <- pheatmap(Euclidean_Pool1,
-         main = "Euclidean Distance of Pool 1 Input-Normalized Barcode Counts",
-         cluster_rows = FALSE,
-         cluster_cols = FALSE,
-         fontsize_row = 8,
-         fontsize_col = 8,
-         border_color = "black",
-         color = viridis(20))
+    main = "Euclidean Distance of Pool 1 Input-Normalized Barcode Counts",
+    cluster_rows = FALSE,
+    cluster_cols = FALSE,
+    fontsize_row = 8,
+    fontsize_col = 8,
+    border_color = "black",
+    color = viridis(20))
 Pool2_Heatmap <- pheatmap(Euclidean_Pool2,
-         main = "Euclidean Distance of Pool 2 Input-Normalized Barcode Counts",
-         cluster_rows = FALSE,
-         cluster_cols = FALSE,
-         fontsize_row = 8,
-         fontsize_col = 8,
-         border_color = "black",
-         color = viridis(20))
+    main = "Euclidean Distance of Pool 2 Input-Normalized Barcode Counts",
+    cluster_rows = FALSE,
+    cluster_cols = FALSE,
+    fontsize_row = 8,
+    fontsize_col = 8,
+    border_color = "black",
+    color = viridis(20))
 
 ## Write Heatmaps to File ##
 pdf(here("QC", "Heatmap of Euclidean Distance of Pool 1 Input-Normalized Counts.pdf"))
@@ -246,7 +263,6 @@ dev.off()
 pdf(here("QC","Heatmap of Euclidean Distance of Pool 2 Input-Normalized Counts.pdf"))
 Pool2_Heatmap
 dev.off()
-
 ```
 
 ######Format Data for GPP Significance Calculation######
@@ -287,7 +303,6 @@ ggplot(ann_wide2, aes(x=CD19_10))+
   ylab("Log-10 Number of Guides") +
   labs(title = "Pool 2 Input-Normalized Log2 Fold-Change")
 
-
 V3_Names_1 <-grep("V3", colnames(ann_wide1), value = T)
 V3_Names_2 <-grep("V3", colnames(ann_wide2), value = T)
 CD19_Names_1 <- grep("CD19", colnames(ann_wide1), value = T)
@@ -304,7 +319,7 @@ for (j in V3_Names_1){
       ylab(paste0(j, " Input_Normalized log2RPM")) +
       xlab(paste0(i, " Input-Normalized log2RPM")) +
       labs(title = paste0(i, " v ", j, " Input-Normalized Sample Comparison"))
-  
+
     ggsave(here("QC", "Pool 1 Pairwise Plots", paste0(i, " v ", j, " Input Normalized Sample Comparison.pdf")),
        device="pdf",
        units="in",
@@ -325,7 +340,7 @@ for (j in CD19_Names_1){
       ylab(paste0(j, " Input_Normalized log2RPM")) +
       xlab(paste0(i, " Input-Normalized log2RPM")) +
       labs(title = paste0(i, " v ", j, " Input-Normalized Sample Comparison"))
-  
+
     ggsave(here("QC", "Pool 1 Pairwise Plots", paste0(i, " v ", j, " Input_Normalized Sample Comparison.pdf")),
        device="pdf",
        units="in",
@@ -346,7 +361,7 @@ for (j in V3_Names_2){
       ylab(paste0(j, " Input_Normalized log2RPM")) +
       xlab(paste0(i, " Input-Normalized log2RPM")) +
       labs(title = paste0(i, " v ", j, " Input-Normalized Sample Comparison"))
-  
+
     ggsave(here("QC", "Pool 2 Pairwise Plots", paste0(i, " v ", j, " Input_Normalized Sample Comparison.pdf")),
        device="pdf",
        units="in",
@@ -367,7 +382,7 @@ for (j in CD19_Names_2){
       ylab(paste0(j, " Input_Normalized log2RPM")) +
       xlab(paste0(i, " Input-Normalized log2RPM")) +
       labs(title = paste0(i, " v ", j, " Input-Normalized Sample Comparison"))
-  
+
     ggsave(here("QC", "Pool 2 Pairwise Plots", paste0(i, " v ", j, " Input_Normalized Sample Comparison.pdf")),
        device="pdf",
        units="in",
@@ -398,16 +413,26 @@ rm(ann_wide2)
 ###Annotate Pools###
 ```{r}
 ## Annotate Barcodes ##
-ann_norm1 <- left_join(norm_Pool1, Pool, by = c("Barcode" = "Barcode"))
-ann_norm2 <- left_join(norm_Pool2, Pool, by = c("Barcode" = "Barcode"))
+ann_norm1 <- left_join(norm_Pool1, Annotations, by = c("Barcode" = "Barcode"))
+ann_norm2 <- left_join(norm_Pool2, Annotations, by = c("Barcode" = "Barcode"))
+dummy_norm1 <- left_join(norm_Pool1, Dummies, by = c("Barcode" = "Barcode"))
+dummy_norm2 <- left_join(norm_Pool2, Dummies, by = c("Barcode" = "Barcode"))
 colnames(ann_norm1) <- c("Barcode", "ID_Barcode","Sample", "Counts", "log2RPM", "Input", "Norm", "Gene", "Ensembl_ID", "Chip")
 colnames(ann_norm2) <- c("Barcode", "ID_Barcode","Sample", "Counts", "log2RPM", "Input", "Norm", "Gene", "Ensembl_ID", "Chip")
+colnames(dummy_norm1) <- c("Barcode", "ID_Barcode","Sample", "Counts", "log2RPM", "Input", "Norm", "Gene", "Ensembl_ID", "Chip")
+colnames(dummy_norm2) <- c("Barcode", "ID_Barcode","Sample", "Counts", "log2RPM", "Input", "Norm", "Gene", "Ensembl_ID", "Chip")
 ann_norm1 <- ann_norm1[,c(1,2,10,3,8,9,4,5,6,7)]
 ann_norm2 <- ann_norm2[,c(1,2,10,3,8,9,4,5,6,7)]
+dummy_norm1 <- dummy_norm1[,c(1,2,10,3,8,9,4,5,6,7)]
+dummy_norm2 <- dummy_norm2[,c(1,2,10,3,8,9,4,5,6,7)]
 write.table(ann_norm1, here("Input Normalized Annotated Pool 1 Data.txt"), col.names = T, row.names = F, sep = "\t", quote = F)
 write.table(ann_norm2, here("Input Normalized Annotated Pool 2 Data.txt"), col.names = T, row.names = F, sep = "\t", quote = F)
+write.table(dummy_norm1, here("Input Normalized Dummy Annotated Pool 1 Data.txt"), col.names = T, row.names = F, sep = "\t", quote = F)
+write.table(dummy_norm2, here("Input Normalized Dummy Annotated Pool 2 Data.txt"), col.names = T, row.names = F, sep = "\t", quote = F)
 saveRDS(ann_norm1, here("Raw Data", "Input Normalized Annotated Pool 1 Data.Rds"))
 saveRDS(ann_norm2, here("Raw Data", "Input Normalized Annotated Pool 2 Data.Rds"))
+saveRDS(dummy_norm1, here("Raw Data", "Input Normalized Dummy Annotated Pool 1 Data.Rds"))
+saveRDS(dummy_norm2, here("Raw Data", "Input Normalized Dummy Annotated Pool 2 Data.Rds"))
 ```
 
 ###Average Normalized Guide Reads Across Experimental Groups###
@@ -415,6 +440,8 @@ saveRDS(ann_norm2, here("Raw Data", "Input Normalized Annotated Pool 2 Data.Rds"
 ## Load Data ##
 ann_norm1 <- readRDS(here("Raw Data", "Input Normalized Annotated Pool 1 Data.Rds"))
 ann_norm2 <- readRDS(here("Raw Data", "Input Normalized Annotated Pool 2 Data.Rds"))
+dummy_norm1 <- readRDS(here("Raw Data", "Input Normalized Dummy Annotated Pool 1 Data.Rds"))
+dummy_norm2 <- readRDS(here("Raw Data", "Input Normalized Dummy Annotated Pool 2 Data.Rds"))
 
 ## Assign Variables to Samples ##
 Pool1_V3 <- grep("EGFRv3", unique(ann_norm1$Sample), value = T)
@@ -423,23 +450,43 @@ Pool2_V3 <- grep("EGFRv3", unique(ann_norm2$Sample), value = T)
 Pool2_CD19 <- grep("hCD19", unique(ann_norm2$Sample), value = T)
 
 ## Average Pool 1 Guides by Gene ##
-V3_Pool1 <- ann_norm1 %>% 
+V3_Pool1 <- ann_norm1 %>%
   dplyr::filter(Sample %in% Pool1_V3, Chip == "CP1406" | Chip == "CP1407") %>%
   group_by(Gene, Sample) %>%
   mutate(geneAvg=mean(Norm))
 
-CD19_Pool1 <- ann_norm1 %>% 
+CD19_Pool1 <- ann_norm1 %>%
+  dplyr::filter(Sample %in% Pool1_CD19, Chip == "CP1406" | Chip == "CP1407") %>%
+  group_by(Gene, Sample) %>%
+  mutate(geneAvg=mean(Norm))
+
+V3_Dummy1 <- dummy_norm1 %>%
+  dplyr::filter(Sample %in% Pool1_V3, Chip == "CP1406" | Chip == "CP1407") %>%
+  group_by(Gene, Sample) %>%
+  mutate(geneAvg=mean(Norm))
+
+CD19_Dummy1 <- dummy_norm1 %>%
   dplyr::filter(Sample %in% Pool1_CD19, Chip == "CP1406" | Chip == "CP1407") %>%
   group_by(Gene, Sample) %>%
   mutate(geneAvg=mean(Norm))
 
 ## Average Pool 2 Guides by Gene ##
-V3_Pool2 <- ann_norm2 %>% 
+V3_Pool2 <- ann_norm2 %>%
   dplyr::filter(Sample %in% Pool2_V3, Chip == "CP1408" | Chip == "CP1409") %>%
   group_by(Gene, Sample) %>%
   mutate(geneAvg=mean(Norm))
 
-CD19_Pool2 <- ann_norm2 %>% 
+CD19_Pool2 <- ann_norm2 %>%
+  dplyr::filter(Sample %in% Pool2_CD19, Chip == "CP1408" | Chip == "CP1409") %>%
+  group_by(Gene, Sample) %>%
+  mutate(geneAvg=mean(Norm))
+
+V3_Dummy2 <- dummy_norm2 %>%
+  dplyr::filter(Sample %in% Pool2_V3, Chip == "CP1408" | Chip == "CP1409") %>%
+  group_by(Gene, Sample) %>%
+  mutate(geneAvg=mean(Norm))
+
+CD19_Dummy2 <- dummy_norm2 %>%
   dplyr::filter(Sample %in% Pool2_CD19, Chip == "CP1408" | Chip == "CP1409") %>%
   group_by(Gene, Sample) %>%
   mutate(geneAvg=mean(Norm))
@@ -447,23 +494,29 @@ CD19_Pool2 <- ann_norm2 %>%
 ## Join Treatment Datasets ##
 L2FC_Pool1 <- rbind(V3_Pool1, CD19_Pool1)
 L2FC_Pool2 <- rbind(V3_Pool2, CD19_Pool2)
+L2FC_Dummy1 <- rbind(V3_Dummy1, CD19_Dummy1)
+L2FC_Dummy2 <- rbind(V3_Dummy2, CD19_Dummy2)
 
 ## Convert to Wide Format ##
 L2FC_wide1 <- L2FC_Pool1 %>% distinct(Gene, .keep_all = TRUE) %>% pivot_wider(id_cols = Gene, names_from = Sample, values_from = geneAvg)
 L2FC_wide2 <- L2FC_Pool2 %>% distinct(Gene, .keep_all = TRUE) %>% pivot_wider(id_cols = Gene, names_from = Sample, values_from = geneAvg)
+L2FC_wide_Dummy1 <- L2FC_Dummy1 %>% distinct(Gene, .keep_all = TRUE) %>% pivot_wider(id_cols = Gene, names_from = Sample, values_from = geneAvg)
+L2FC_wide_Dummy2 <- L2FC_Dummy2 %>% distinct(Gene, .keep_all = TRUE) %>% pivot_wider(id_cols = Gene, names_from = Sample, values_from = geneAvg)
 
-## Exclude EGFRv3 Mouse 2 and CD19 Mouse 14 and Mouse 16 from Pool 1 Analysis ##
+## Exclude Mice from Pool 1 Analysis ##
 Pool1_CD19_ex <- c("Pool_5_6_hCD19_11_CP1406_CP1407",
                    "Pool_5_6_hCD19_15_CP1406_CP1407",
                    "Pool_5_6_hCD19_16_CP1406_CP1407")
 
 Pool1_V3_filt <- Pool1_V3
+
 Pool1_CD19_filt <- Pool1_CD19[!Pool1_CD19 %in% Pool1_CD19_ex]
 
-## Exclude EGFRv3 Mouse 3 and 5, CD19 Mouse 12 and 13 from Pool 2 Analysis ##
+## Exclude Mice from Pool 2 Analysis ##
 Pool2_CD19_ex <- "Pool_7_8_hCD19_16_CP1408_CP1409"
 
 Pool2_V3_filt <- Pool2_V3
+
 Pool2_CD19_filt <- Pool2_CD19[!Pool2_CD19 %in% Pool2_CD19_ex]
 ```
 
@@ -476,6 +529,14 @@ L2FC_wide1$L2FC <- L2FC_wide1$CD19_Avg - L2FC_wide1$V3_Avg
 L2FC_wide2$V3_Avg <- rowMeans(L2FC_wide2[,Pool2_V3_filt])
 L2FC_wide2$CD19_Avg <- rowMeans(L2FC_wide2[,Pool2_CD19_filt])
 L2FC_wide2$L2FC <- L2FC_wide2$CD19_Avg - L2FC_wide2$V3_Avg
+
+L2FC_wide_Dummy1$V3_Avg <- rowMeans(L2FC_wide_Dummy1[,Pool1_V3_filt])
+L2FC_wide_Dummy1$CD19_Avg <- rowMeans(L2FC_wide_Dummy1[,Pool1_CD19_filt])
+L2FC_wide_Dummy1$L2FC <- L2FC_wide_Dummy1$CD19_Avg - L2FC_wide_Dummy1$V3_Avg
+
+L2FC_wide_Dummy2$V3_Avg <- rowMeans(L2FC_wide_Dummy2[,Pool2_V3_filt])
+L2FC_wide_Dummy2$CD19_Avg <- rowMeans(L2FC_wide_Dummy2[,Pool2_CD19_filt])
+L2FC_wide_Dummy2$L2FC <- L2FC_wide_Dummy2$CD19_Avg - L2FC_wide_Dummy2$V3_Avg
 
 ## Calculate Significance ##
 L2FC_wide1$pval <- sapply(rownames(L2FC_wide1), function(x) {
@@ -493,6 +554,26 @@ L2FC_wide1$stat <- sapply(rownames(L2FC_wide1), function(x) {
       sd(L2FC_wide1[x, Pool1_CD19_filt]) > 0) {
     t.test(as.numeric(as.character(L2FC_wide1[x, Pool1_V3_filt])),
            as.numeric(as.character(L2FC_wide1[x, Pool1_CD19_filt])))$statistic
+  } else {
+    1
+  }
+})
+
+L2FC_wide_Dummy1$pval <- sapply(rownames(L2FC_wide_Dummy1), function(x) {
+  if (sd(L2FC_wide_Dummy1[x, Pool1_V3_filt]) > 0 &&
+      sd(L2FC_wide_Dummy1[x, Pool1_CD19_filt]) > 0) {
+    t.test(as.numeric(as.character(L2FC_wide_Dummy1[x, Pool1_V3_filt])),
+           as.numeric(as.character(L2FC_wide_Dummy1[x, Pool1_CD19_filt])))$p.value
+  } else {
+    1
+  }
+})
+
+L2FC_wide_Dummy1$stat <- sapply(rownames(L2FC_wide_Dummy1), function(x) {
+  if (sd(L2FC_wide_Dummy1[x, Pool1_V3_filt]) > 0 &&
+      sd(L2FC_wide_Dummy1[x, Pool1_CD19_filt]) > 0) {
+    t.test(as.numeric(as.character(L2FC_wide_Dummy1[x, Pool1_V3_filt])),
+           as.numeric(as.character(L2FC_wide_Dummy1[x, Pool1_CD19_filt])))$statistic
   } else {
     1
   }
@@ -518,17 +599,45 @@ L2FC_wide2$stat <- sapply(rownames(L2FC_wide2), function(x) {
   }
 })
 
+L2FC_wide_Dummy2$pval <- sapply(rownames(L2FC_wide_Dummy2), function(x) {
+  if (sd(L2FC_wide_Dummy2[x, Pool2_V3_filt]) > 0 &&
+      sd(L2FC_wide_Dummy2[x, Pool2_CD19_filt]) > 0) {
+    t.test(as.numeric(as.character(L2FC_wide_Dummy2[x, Pool2_V3_filt])),
+           as.numeric(as.character(L2FC_wide_Dummy2[x, Pool2_CD19_filt])))$p.value
+  } else {
+    1
+  }
+})
+
+L2FC_wide_Dummy2$stat <- sapply(rownames(L2FC_wide_Dummy2), function(x) {
+  if (sd(L2FC_wide_Dummy2[x, Pool2_V3_filt]) > 0 &&
+      sd(L2FC_wide_Dummy2[x, Pool2_CD19_filt]) > 0) {
+    t.test(as.numeric(as.character(L2FC_wide_Dummy2[x, Pool2_V3_filt])),
+           as.numeric(as.character(L2FC_wide_Dummy2[x, Pool2_CD19_filt])))$statistic
+  } else {
+    1
+  }
+})
+
 L2FC_wide1$FDR <- p.adjust(L2FC_wide1$pval, method = "BH")
 L2FC_wide1$log10pval <- -log(L2FC_wide1$pval, 10)
+L2FC_wide_Dummy1$FDR <- p.adjust(L2FC_wide_Dummy1$pval, method = "BH")
+L2FC_wide_Dummy1$log10pval <- -log(L2FC_wide_Dummy1$pval, 10)
 
 L2FC_wide2$FDR <- p.adjust(L2FC_wide2$pval, method = "BH")
 L2FC_wide2$log10pval <- -log(L2FC_wide2$pval, 10)
+L2FC_wide_Dummy2$FDR <- p.adjust(L2FC_wide_Dummy2$pval, method = "BH")
+L2FC_wide_Dummy2$log10pval <- -log(L2FC_wide_Dummy2$pval, 10)
 
 L2FC_wide1$zscore <- (L2FC_wide1$L2FC-mean(L2FC_wide1$L2FC)) / sd(L2FC_wide1$L2FC)
 L2FC_wide2$zscore <- (L2FC_wide2$L2FC-mean(L2FC_wide2$L2FC)) / sd(L2FC_wide2$L2FC)
+L2FC_wide_Dummy1$zscore <- (L2FC_wide_Dummy1$L2FC-mean(L2FC_wide_Dummy1$L2FC)) / sd(L2FC_wide_Dummy1$L2FC)
+L2FC_wide_Dummy2$zscore <- (L2FC_wide_Dummy2$L2FC-mean(L2FC_wide_Dummy2$L2FC)) / sd(L2FC_wide_Dummy2$L2FC)
 
 write.table(L2FC_wide1, here("Normalized Average L2FC for Pool CP1406 and 1407.txt"), col.names = T, row.names = F, quote = F, sep = "\t")
 write.table(L2FC_wide2, here("Normalized Average L2FC for Pool CP1408 and 1409.txt"), col.names = T, row.names = F, quote = F, sep = "\t")
+write.table(L2FC_wide_Dummy1, here("Normalized Average L2FC with Dummies for Pool CP1406 and 1407.txt"), col.names = T, row.names = F, quote = F, sep = "\t")
+write.table(L2FC_wide_Dummy2, here("Normalized Average L2FC with Dummies for Pool CP1408 and 1409.txt"), col.names = T, row.names = F, quote = F, sep = "\t")
 ```
 
 ###Visualize Pool 1 Data###
@@ -537,9 +646,12 @@ write.table(L2FC_wide2, here("Normalized Average L2FC for Pool CP1408 and 1409.t
 NO_SITE1 <- L2FC_wide1 %>% dplyr::filter(str_detect(Gene, "NO_SITE"))
 Intergenic1 <- L2FC_wide1 %>% dplyr::filter(str_detect(Gene, "ONE_INTER"))
 sigZ1 <- L2FC_wide1 %>% dplyr::filter(pval < 0.05 & (zscore < -2 | zscore > 2))
+Dummy_NT1 <- L2FC_wide_Dummy1 %>% dplyr::filter(str_detect(Gene, "NT_"))
+Dummy_IG1 <- L2FC_wide_Dummy1 %>% dplyr::filter(str_detect(Gene, "IG_"))
+
 
 ## Import Essential Gene Data ##
-Essentials <- readRDS("~/Desktop/Data/sgRNA_Screens/Resources/Hart et al Mouse Essential Genes.Rds")
+Essentials <- readRDS(paste0(Resources, "Hart et al Mouse Essential Genes.Rds"))
 Pool1_Essentials <- L2FC_wide1 %>% dplyr::filter(Gene %in% Essentials)
 Pool1_sig_ess <- Pool1_Essentials %>% dplyr::filter(log10pval > 2 &  L2FC < -1 | L2FC > 1)
 
@@ -549,76 +661,50 @@ ggplot() +
   geom_point(data = NO_SITE1, aes(L2FC, log10pval), shape = 16, size = 1, color="#FF00FF") +
   scale_x_continuous(limits = c(-4,4), breaks = seq(-4,4,1)) +
   scale_y_continuous(limits = c(0,4), breaks = seq(0,4,1)) +
-  labs(title = "Pool CP1406 and CP1407\nNo Site Control Guides", 
-       x=expression(Log[2]*" Fold Change CD19 / EGFRv3"), 
-       y=expression(-log[10]*" p-value")) +
+  labs(title = "Pool CP1406 and CP1407\nNo Site Control Guides",
+    x=expression(Log[2]*" Fold Change CD19 / EGFRv3"),
+    y=expression(-log[10]*" p-value")) +
   theme(legend.position="none",
-      axis.title.x = element_text(size = 10),
-      axis.title.y = element_text(size = 10),
-      axis.text.x = element_text(size = 8),
-      axis.text.y = element_text(size = 8),
-      axis.ticks.length = unit(.05, "in"),
-      plot.title = element_text(size = 12),
-      panel.background = element_blank(),
-      plot.margin=margin(.2,.2,.2,.2,"in"),
-      panel.border=element_rect(fill="NA", color="black", size=.75))
+    axis.title.x = element_text(size = 10),
+    axis.title.y = element_text(size = 10),
+    axis.text.x = element_text(size = 8),
+    axis.text.y = element_text(size = 8),
+    axis.ticks.length = unit(.05, "in"),
+    plot.title = element_text(size = 12),
+    panel.background = element_blank(),
+    plot.margin=margin(.2,.2,.2,.2,"in"),
+    panel.border=element_rect(fill="NA", color="black", size=.75))
 
 ggsave(here("QC","Pool CP1406 and CP1407 No Site Control Volcano Plot.pdf"),
-       device="pdf",
-       units="in",
-       height=5,
-       width=5)
+    device="pdf",
+    units="in",
+    height=5,
+    width=5)
 
 ggplot() +
   geom_point(data = L2FC_wide1, aes(L2FC, log10pval), shape=16, size=.75, color="#D3D3D3") +
   geom_point(data = Intergenic1, aes(L2FC, log10pval), shape = 16, size = 1, color="#FF00FF") +
   scale_x_continuous(limits = c(-4,4), breaks = seq(-4,4,1)) +
   scale_y_continuous(limits = c(0,4), breaks = seq(0,4,1)) +
-  labs(title = "Pool CP1406 and CP1407\nIntergenic Control Guides", 
-       x=expression(Log[2]*" Fold Change CD19 / EGFRv3"), 
-       y=expression(-log[10]*" p-value")) +
+  labs(title = "Pool CP1406 and CP1407\nIntergenic Control Guides",
+    x=expression(Log[2]*" Fold Change CD19 / EGFRv3"),
+    y=expression(-log[10]*" p-value")) +
   theme(legend.position="none",
-      axis.title.x = element_text(size = 10),
-      axis.title.y = element_text(size = 10),
-      axis.text.x = element_text(size = 8),
-      axis.text.y = element_text(size = 8),
-      axis.ticks.length = unit(.05, "in"),
-      plot.title = element_text(size = 12),
-      panel.background = element_blank(),
-      plot.margin=margin(.2,.2,.2,.2,"in"),
-      panel.border=element_rect(fill="NA", color="black", size=.75))
+    axis.title.x = element_text(size = 10),
+    axis.title.y = element_text(size = 10),
+    axis.text.x = element_text(size = 8),
+    axis.text.y = element_text(size = 8),
+    axis.ticks.length = unit(.05, "in"),
+    plot.title = element_text(size = 12),
+    panel.background = element_blank(),
+    plot.margin=margin(.2,.2,.2,.2,"in"),
+    panel.border=element_rect(fill="NA", color="black", size=.75))
 
 ggsave(here("QC","Pool CP1406 and CP1407 Intergenic Control Volcano Plot.pdf"),
-       device="pdf",
-       units="in",
-       height=5,
-       width=5)
-
-ggplot() +
-  geom_point(data = L2FC_wide1, aes(L2FC, log10pval), shape=16, size=.75, color="#D3D3D3") +
-  geom_point(data = sigZ1, aes(L2FC, log10pval), shape = 16, size = 1, color = "#FF00FF") + 
-  geom_text_repel(data = sigZ1, aes(L2FC, log10pval), size = 1.75, label = sigZ1$Gene, force = 10, force_pull = .1, direction = "both", max.overlaps = Inf, box.padding = .1, segment.size = .2, min.segment.length = .2) +
-  scale_x_continuous(limits = c(-4,4), breaks = seq(-4,4,1)) +
-  scale_y_continuous(limits = c(0,4), breaks = seq(0,4,1)) +
-  labs(title = "Pool CP1406 and CP1407 Hits", 
-       x=expression(Log[2]*" Fold Change CD19 / EGFRv3"), 
-       y=expression(-log[10]*" p-value")) +
-  theme(legend.position="none",
-      axis.title.x = element_text(size = 10),
-      axis.title.y = element_text(size = 10),
-      axis.text.x = element_text(size = 8),
-      axis.text.y = element_text(size = 8),
-      axis.ticks.length = unit(.05, "in"),
-      plot.title = element_text(size = 12),
-      panel.background = element_blank(),
-      plot.margin=margin(.2,.2,.2,.2,"in"),
-      panel.border=element_rect(fill="NA", color="black", size=.75))
-
-ggsave(here("Pool CP1406 CP1407 Hits Volcano Plot.pdf"),
-       device="pdf",
-       units="in",
-       height=5,
-       width=5)
+    device="pdf",
+    units="in",
+    height=5,
+    width=5)
 
 ggplot() +
   geom_point(data = L2FC_wide1, aes(L2FC, log10pval), shape=16, size=.75, color="#D3D3D3") +
@@ -626,52 +712,155 @@ ggplot() +
   geom_text_repel(data = Pool1_sig_ess, aes(L2FC, log10pval), size = 1.75, label = Pool1_sig_ess$Gene, force = 10, force_pull = .1, direction = "both", max.overlaps = 10, box.padding = .1, segment.size = .2, min.segment.length = .2) +
   scale_x_continuous(limits = c(-4,4), breaks = seq(-4,4,1)) +
   scale_y_continuous(limits = c(0,4), breaks = seq(0,4,1)) +
-  labs(title = "Pool CP1406 and CP1407 Essential Genes", 
-       x=expression(Log[2]*" Fold Change CD19 / EGFRv3"), 
-       y=expression(-log[10]*" p-value")) +
+  labs(title = "Pool CP1406 and CP1407 Essential Genes",
+    x=expression(Log[2]*" Fold Change CD19 / EGFRv3"),
+    y=expression(-log[10]*" p-value")) +
   theme(legend.position="none",
-      axis.title.x = element_text(size = 10),
-      axis.title.y = element_text(size = 10),
-      axis.text.x = element_blank(),
-      axis.text.y = element_text(size = 8),
-      axis.ticks.length = unit(.05, "in"),
-      plot.title = element_text(size = 12),
-      panel.background = element_blank(),
-      plot.margin=margin(.2,.2,.2,.2,"in"),
-      panel.border=element_rect(fill="NA", color="black", size=.75))
+    axis.title.x = element_text(size = 10),
+    axis.title.y = element_text(size = 10),
+    axis.text.x = element_blank(),
+    axis.text.y = element_text(size = 8),
+    axis.ticks.length = unit(.05, "in"),
+    plot.title = element_text(size = 12),
+    panel.background = element_blank(),
+    plot.margin=margin(.2,.2,.2,.2,"in"),
+    panel.border=element_rect(fill="NA", color="black", size=.75))
 
 ggsave(here("Pool CP1406 and CP1407 Essential Genes Volcano Plot.pdf"),
-       device="pdf",
-       units="in",
-       height=5,
-       width=5)
+    device="pdf",
+    units="in",
+    height=5,
+    width=5)
 
 ggplot() +
-    geom_point(data=L2FC_wide1, aes(x=reorder(Gene, -zscore), y=zscore), shape=16, size=0.75, color="#D3D3D3") +
-    geom_point(data=sigZ1, aes(x=reorder(Gene, -zscore), y=zscore), shape=16, size=0.75, color="#FF00FF") +
-    geom_text_repel(data = sigZ1, aes(x=reorder(Gene, -zscore), y=zscore), size = 1.75, label = sigZ1$Gene, force = 50, force_pull = 4, direction = "both", max.overlaps = Inf, box.padding = .05, segment.size = 0.2, min.segment.length = .2, max.time = 10) +
-    labs(x= "Gene Rank", y = "Z-score", title = "Pool 1 Gene Z-Scores") +
-    scale_x_discrete(expand=expansion(add=20)) +
-    geom_hline(yintercept=2, linetype= "dashed", size=0.25) +
-    geom_hline(yintercept=-2, linetype="dashed", size=0.25) +
-    theme(legend.position="none",
-      axis.title.x = element_text(size = 10),
-      axis.title.y = element_text(size = 10),
-      axis.text.x = element_blank(),
-      axis.text.y = element_text(size = 8),
-      axis.ticks.length = unit(.05, "in"),
-      axis.ticks.x = element_blank(),
-      plot.title = element_text(size = 12),
-      panel.background = element_blank(),
-      panel.spacing = unit(.25, "in"),
-      plot.margin=margin(.2,.2,.2,.2,"in"),
-      panel.border=element_rect(fill="NA", color="black", size=.75))
+  geom_point(data = L2FC_wide1, aes(L2FC, log10pval), shape=16, size=.75, color="#D3D3D3") +
+  geom_point(data = sigZ1, aes(L2FC, log10pval), shape = 16, size = 1, color = "#FF00FF") +
+  geom_text_repel(data = sigZ1, aes(L2FC, log10pval), size = 1.75, label = sigZ1$Gene, force = 10, force_pull = .1, direction = "both", max.overlaps = Inf, box.padding = .1, segment.size = .2, min.segment.length = .2) +
+  scale_x_continuous(limits = c(-4,4), breaks = seq(-4,4,1)) +
+  scale_y_continuous(limits = c(0,4), breaks = seq(0,4,1)) +
+  labs(title = "Pool CP1406 and CP1407 Hits",
+    x=expression(Log[2]*" Fold Change CD19 / EGFRv3"),
+    y=expression(-log[10]*" p-value")) +
+  theme(legend.position="none",
+    axis.title.x = element_text(size = 10),
+    axis.title.y = element_text(size = 10),
+    axis.text.x = element_text(size = 8),
+    axis.text.y = element_text(size = 8),
+    axis.ticks.length = unit(.05, "in"),
+    plot.title = element_text(size = 12),
+    panel.background = element_blank(),
+    plot.margin=margin(.2,.2,.2,.2,"in"),
+    panel.border=element_rect(fill="NA", color="black", size=.75))
 
-ggsave(here("Pool CP1406 and CP1407 Z-Score Rank Plot.pdf"),
-       device="pdf",
-       units="in",
-       height=5,
-       width=5)
+ggsave(here("Pool CP1406 and CP1407 Hits Volcano Plot.pdf"),
+    device="pdf",
+    units="in",
+    height=5,
+    width=5)
+
+ggplot() +
+  geom_point(data = L2FC_wide_Dummy1, aes(L2FC, log10pval), shape=16, size=.75, color="#D3D3D3") +
+  geom_point(data = Dummy_NT1, aes(L2FC, log10pval), shape = 16, size = 1, color="#FF00FF") +
+  scale_x_continuous(limits = c(-4,4), breaks = seq(-4,4,1)) +
+  scale_y_continuous(limits = c(0,4), breaks = seq(0,4,1)) +
+  labs(title = "Pool CP1406 and CP1407\nNo Site Control Guides",
+    x=expression(Log[2]*" Fold Change CD19 / EGFRv3"),
+    y=expression(-log[10]*" p-value")) +
+  theme(legend.position="none",
+    axis.title.x = element_text(size = 10),
+    axis.title.y = element_text(size = 10),
+    axis.text.x = element_text(size = 8),
+    axis.text.y = element_text(size = 8),
+    axis.ticks.length = unit(.05, "in"),
+    plot.title = element_text(size = 12),
+    panel.background = element_blank(),
+    plot.margin=margin(.2,.2,.2,.2,"in"),
+    panel.border=element_rect(fill="NA", color="black", size=.75))
+
+ggsave(here("QC","Pool CP1406 and CP1407 No Site Dummy Volcano Plot.pdf"),
+    device="pdf",
+    units="in",
+    height=5,
+    width=5)
+
+ggplot() +
+  geom_point(data = L2FC_wide_Dummy1, aes(L2FC, log10pval), shape=16, size=.75, color="#D3D3D3") +
+  geom_point(data = Dummy_IG1, aes(L2FC, log10pval), shape = 16, size = 1, color="#FF00FF") +
+  scale_x_continuous(limits = c(-4,4), breaks = seq(-4,4,1)) +
+  scale_y_continuous(limits = c(0,4), breaks = seq(0,4,1)) +
+  labs(title = "Pool CP1406 and CP1407\nIntergenic Control Guides",
+    x=expression(Log[2]*" Fold Change CD19 / EGFRv3"),
+    y=expression(-log[10]*" p-value")) +
+  theme(legend.position="none",
+    axis.title.x = element_text(size = 10),
+    axis.title.y = element_text(size = 10),
+    axis.text.x = element_text(size = 8),
+    axis.text.y = element_text(size = 8),
+    axis.ticks.length = unit(.05, "in"),
+    plot.title = element_text(size = 12),
+    panel.background = element_blank(),
+    plot.margin=margin(.2,.2,.2,.2,"in"),
+    panel.border=element_rect(fill="NA", color="black", size=.75))
+
+ggsave(here("QC","Pool CP1406 and CP1407 Intergenic Dummy Volcano Plot.pdf"),
+    device="pdf",
+    units="in",
+    height=5,
+    width=5)
+
+ggplot() +
+  geom_point(data=L2FC_wide1, aes(x=reorder(Gene, -zscore), y=zscore), shape=16, size=0.75, color="#D3D3D3") +
+  geom_point(data=Dummy_NT1, aes(x=reorder(Gene, -zscore), y=zscore), shape=16, size=0.75, color="#FF00FF") +
+  geom_text_repel(data = Dummy_NT1, aes(x=reorder(Gene, -zscore), y=zscore), size = 1.75, label = Dummy_NT1$Gene, force = 50, force_pull = 4, direction = "both", max.overlaps = Inf, box.padding = .05, segment.size = 0.2, min.segment.length = .2, max.time = 10) +
+  labs(x= "Gene Rank", y = "Z-score", title = "Pool CP1406 and CP1407 Z-Score Rank") +
+  scale_x_discrete(expand=expansion(add=20)) +
+  geom_hline(yintercept=2, linetype= "dashed", size=0.25) +
+  geom_hline(yintercept=-2, linetype="dashed", size=0.25) +
+  theme(legend.position="none",
+    axis.title.x = element_text(size = 10),
+    axis.title.y = element_text(size = 10),
+    axis.text.x = element_blank(),
+    axis.text.y = element_text(size = 8),
+    axis.ticks.length = unit(.05, "in"),
+    axis.ticks.x = element_blank(),
+    plot.title = element_text(size = 12),
+    panel.background = element_blank(),
+    panel.spacing = unit(.25, "in"),
+    plot.margin=margin(.2,.2,.2,.2,"in"),
+    panel.border=element_rect(fill="NA", color="black", size=.75))
+
+ggsave(here("Pool CP1406 and CP1407 No Site Dummy Z-Score Rank Plot.pdf"),
+    device="pdf",
+    units="in",
+    height=5,
+    width=5)
+
+ggplot() +
+  geom_point(data=L2FC_wide1, aes(x=reorder(Gene, -zscore), y=zscore), shape=16, size=0.75, color="#D3D3D3") +
+  geom_point(data=Dummy_IG1, aes(x=reorder(Gene, -zscore), y=zscore), shape=16, size=0.75, color="#FF00FF") +
+  geom_text_repel(data = Dummy_IG1, aes(x=reorder(Gene, -zscore), y=zscore), size = 1.75, label = Dummy_IG1$Gene, force = 50, force_pull = 4, direction = "both", max.overlaps = Inf, box.padding = .05, segment.size = 0.2, min.segment.length = .2, max.time = 10) +
+  labs(x= "Gene Rank", y = "Z-score", title = "Pool CP1406 and CP1407 Z-Score Rank") +
+  scale_x_discrete(expand=expansion(add=20)) +
+  geom_hline(yintercept=2, linetype= "dashed", size=0.25) +
+  geom_hline(yintercept=-2, linetype="dashed", size=0.25) +
+  theme(legend.position="none",
+    axis.title.x = element_text(size = 10),
+    axis.title.y = element_text(size = 10),
+    axis.text.x = element_blank(),
+    axis.text.y = element_text(size = 8),
+    axis.ticks.length = unit(.05, "in"),
+    axis.ticks.x = element_blank(),
+    plot.title = element_text(size = 12),
+    panel.background = element_blank(),
+    panel.spacing = unit(.25, "in"),
+    plot.margin=margin(.2,.2,.2,.2,"in"),
+    panel.border=element_rect(fill="NA", color="black", size=.75))
+
+ggsave(here("Pool CP1406 and CP1407 Intergenic Dummy Z-Score Rank Plot.pdf"),
+    device="pdf",
+    units="in",
+    height=5,
+    width=5)
 ```
 
 ###Visualize Pool 2 Data###
@@ -679,13 +868,14 @@ ggsave(here("Pool CP1406 and CP1407 Z-Score Rank Plot.pdf"),
 ## Filter Controls and Significant Results ##
 NO_SITE2 <- L2FC_wide2 %>% dplyr::filter(str_detect(Gene, "NO_SITE"))
 Intergenic2 <- L2FC_wide2 %>% dplyr::filter(str_detect(Gene, "ONE_INTER"))
-sigRes2 <- L2FC_wide2 %>% dplyr::filter(log10pval > 2.5)
 sigZ2 <- L2FC_wide2 %>% dplyr::filter(pval < 0.05 & (zscore < -2 | zscore > 2))
+Dummy_NT2 <- L2FC_wide_Dummy2 %>% dplyr::filter(str_detect(Gene, "NT_"))
+Dummy_IG2 <- L2FC_wide_Dummy2 %>% dplyr::filter(str_detect(Gene, "IG_"))
 
 ## Import Essential Gene List ##
 Essentials <- readRDS("~/Desktop/Data/sgRNA_Screens/Resources/Hart et al Mouse Essential Genes.Rds")
 Pool2_Essentials <- L2FC_wide2 %>% dplyr::filter(Gene %in% Essentials)
-Pool2_sig_ess <- Pool2_Essentials %>% dplyr::filter(log10pval > 2 &  L2FC < -1 | L2FC > 1)
+Pool2_sig_ess <- Pool2_Essentials %>% dplyr::filter(pval < 0.05 & (zscore < -2 | zscore > 2))
 
 ## Plot Results and Export to File ##
 ggplot() +
@@ -693,9 +883,9 @@ ggplot() +
   geom_point(data = NO_SITE2, aes(L2FC, log10pval), shape = 16, size = 1, color="#FF00FF") +
   scale_x_continuous(limits = c(-4,4), breaks = seq(-4,4,1)) +
   scale_y_continuous(limits = c(0,6), breaks = seq(0,6,1)) +
-  labs(title = "Pool CP1408 and CP1409\nNo Site Control Guides", 
-       x=expression(Log[2]*" Fold Change CD19 / EGFRv3"), 
-       y=expression(-log[10]*" p-value")) +
+  labs(title = "Pool CP1408 and CP1409\nNo Site Control Guides",
+      x=expression(Log[2]*" Fold Change CD19 / EGFRv3"),
+      y=expression(-log[10]*" p-value")) +
   theme(legend.position="none",
       axis.title.x = element_text(size = 10),
       axis.title.y = element_text(size = 10),
@@ -708,19 +898,19 @@ ggplot() +
       panel.border=element_rect(fill="NA", color="black", size=.75))
 
 ggsave(here("QC","Pool CP1408 and CP1409 No Site Control Volcano Plot.pdf"),
-       device="pdf",
-       units="in",
-       height=5,
-       width=5)
+    device="pdf",
+    units="in",
+    height=5,
+    width=5)
 
 ggplot() +
   geom_point(data = L2FC_wide2, aes(L2FC, log10pval), shape=16, size=.75, color="#D3D3D3") +
   geom_point(data = Intergenic2, aes(L2FC, log10pval), shape = 16, size = 1, color="#FF00FF") +
   scale_x_continuous(limits = c(-4,4), breaks = seq(-4,4,1)) +
   scale_y_continuous(limits = c(0,6), breaks = seq(0,6,1)) +
-  labs(title = "Pool CP1408 and CP1409\nIntergenic Control Guides", 
-       x=expression(Log[2]*" Fold Change CD19 / EGFRv3"), 
-       y=expression(-log[10]*" p-value")) +
+  labs(title = "Pool CP1408 and CP1409\nIntergenic Control Guides",
+      x=expression(Log[2]*" Fold Change CD19 / EGFRv3"),
+      y=expression(-log[10]*" p-value")) +
   theme(legend.position="none",
       axis.title.x = element_text(size = 10),
       axis.title.y = element_text(size = 10),
@@ -733,45 +923,19 @@ ggplot() +
       panel.border=element_rect(fill="NA", color="black", size=.75))
 
 ggsave(here("QC","Pool CP1408 and CP1409 Intergenic Control Volcano Plot.pdf"),
-       device="pdf",
-       units="in",
-       height=5,
-       width=5)
-
-ggplot() +
-  geom_point(data = L2FC_wide2, aes(L2FC, log10pval), shape=16, size=.75, color="#D3D3D3") +
-  geom_point(data = sigRes2, aes(L2FC, log10pval), shape = 16, size = 1, color = "#FF00FF") + 
-  geom_text_repel(data = sigRes2, aes(L2FC, log10pval), size = 1.75, label = sigRes2$Gene, force = 10, force_pull = .1, direction = "both", max.overlaps = Inf, box.padding = .1, segment.size = .2, min.segment.length = .2) +
-  scale_x_continuous(limits = c(-4,4), breaks = seq(-4,4,1)) +
-  scale_y_continuous(limits = c(0,6), breaks = seq(0,6,1)) +
-  labs(title = "Pool CP1408 and CP1409 Hits", 
-       x=expression(Log[2]*" Fold Change CD19 / EGFRv3"), 
-       y=expression(-log[10]*" p-value")) +
-  theme(legend.position="none",
-      axis.title.x = element_text(size = 10),
-      axis.title.y = element_text(size = 10),
-      axis.text.x = element_text(size = 8),
-      axis.text.y = element_text(size = 8),
-      axis.ticks.length = unit(.05, "in"),
-      plot.title = element_text(size = 12),
-      panel.background = element_blank(),
-      plot.margin=margin(.2,.2,.2,.2,"in"),
-      panel.border=element_rect(fill="NA", color="black", size=.75))
-
-ggsave(here("Pool CP1408 and CP1409 Hits Volcano Plot.pdf"),
-       device="pdf",
-       units="in",
-       height=5,
-       width=5)
+    device="pdf",
+    units="in",
+    height=5,
+    width=5)
 
 ggplot() +
   geom_point(data = L2FC_wide2, aes(L2FC, log10pval), shape=16, size=.75, color="#D3D3D3") +
   geom_point(data = Pool2_Essentials, aes(L2FC, log10pval), shape = 16, size = 1, color = "#FF00FF") +
   geom_text_repel(data = Pool2_sig_ess, aes(L2FC, log10pval), size = 1.75, label = Pool2_sig_ess$Gene, force = 10, force_pull = .1, direction = "both", max.overlaps = 10, box.padding = .1, segment.size = .2, min.segment.length = .2) +   scale_x_continuous(limits = c(-4,4), breaks = seq(-4,4,1)) +
   scale_y_continuous(limits = c(0,6), breaks = seq(0,6,1)) +
-  labs(title = "Pool CP1408 and CP1409 Essential Genes", 
-       x=expression(Log[2]*" Fold Change CD19 / EGFRv3"), 
-       y=expression(-log[10]*" p-value")) +
+  labs(title = "Pool CP1408 and CP1409 Essential Genes",
+      x=expression(Log[2]*" Fold Change CD19 / EGFRv3"),
+      y=expression(-log[10]*" p-value")) +
   theme(legend.position="none",
       axis.title.x = element_text(size = 10),
       axis.title.y = element_text(size = 10),
@@ -784,35 +948,165 @@ ggplot() +
       panel.border=element_rect(fill="NA", color="black", size=.75))
 
 ggsave(here("Pool CP1408 and CP1409 Essential Genes Volcano Plot.pdf"),
-       device="pdf",
-       units="in",
-       height=5,
-       width=5)
+    device="pdf",
+    units="in",
+    height=5,
+    width=5)
 
 ggplot() +
-    geom_point(data=L2FC_wide2, aes(x=reorder(Gene, -zscore), y=zscore), shape=16, size=0.75, color="#D3D3D3") +
-    geom_point(data=sigZ2, aes(x=reorder(Gene, -zscore), y=zscore), shape=16, size=0.75, color="#FF00FF") +
-    geom_text_repel(data = sigZ2, aes(x=reorder(Gene, -zscore), y=zscore), size = 1.5, label = sigZ2$Gene, force = 50, force_pull = 1.5, direction = "both", max.overlaps = 10, box.padding = .05, segment.size = 0.2, min.segment.length = .2, max.time = 10, nudge_x = 1, nudge_y = 1) +
-    labs(x= "Gene Rank", y = "Z-score", title = "Pool B Gene Z-Scores") +
-    scale_x_discrete(expand=expansion(add=20)) +
-    geom_hline(yintercept=2, linetype= "dashed", size=0.25) +
-    geom_hline(yintercept=-2, linetype="dashed", size=0.25) +
-    theme(legend.position="none",
+  geom_point(data = L2FC_wide2, aes(L2FC, log10pval), shape=16, size=.75, color="#D3D3D3") +
+  geom_point(data = sigZ2, aes(L2FC, log10pval), shape = 16, size = 1, color = "#FF00FF") +
+  geom_text_repel(data = sigZ2, aes(L2FC, log10pval), size = 1.75, label = sigZ2$Gene, force = 10, force_pull = .1, direction = "both", max.overlaps = Inf, box.padding = .1, segment.size = .2, min.segment.length = .2) +
+  scale_x_continuous(limits = c(-4,4), breaks = seq(-4,4,1)) +
+  scale_y_continuous(limits = c(0,6), breaks = seq(0,6,1)) +
+  labs(title = "Pool CP1408 and CP1409 Hits",
+      x=expression(Log[2]*" Fold Change CD19 / EGFRv3"),
+      y=expression(-log[10]*" p-value")) +
+  theme(legend.position="none",
       axis.title.x = element_text(size = 10),
       axis.title.y = element_text(size = 10),
-      axis.text.x = element_blank(),
+      axis.text.x = element_text(size = 8),
       axis.text.y = element_text(size = 8),
       axis.ticks.length = unit(.05, "in"),
-      axis.ticks.x = element_blank(),
       plot.title = element_text(size = 12),
       panel.background = element_blank(),
-      panel.spacing = unit(.25, "in"),
       plot.margin=margin(.2,.2,.2,.2,"in"),
       panel.border=element_rect(fill="NA", color="black", size=.75))
 
-ggsave(here("Pool CP1408 and CP1409 Significant Z-Score Rank Plot All Samples.pdf"),
-       device="pdf",
-       units="in",
-       height=5,
-       width=5)
+ggsave(here("Pool CP1408 and CP1409 Hits Volcano Plot.pdf"),
+    device="pdf",
+    units="in",
+    height=5,
+    width=5)
+
+ggplot() +
+  geom_point(data=L2FC_wide2, aes(x=reorder(Gene, -zscore), y=zscore), shape=16, size=0.75, color="#D3D3D3") +
+  geom_point(data=sigZ2, aes(x=reorder(Gene, -zscore), y=zscore), shape=16, size=0.75, color="#FF00FF") +
+  geom_text_repel(data = sigZ2, aes(x=reorder(Gene, -zscore), y=zscore), size = 1.5, label = sigZ2$Gene, force = 50, force_pull = 1.5, direction = "both", max.overlaps = 10, box.padding = .05, segment.size = 0.2, min.segment.length = .2, max.time = 10, nudge_x = 1, nudge_y = 1) +
+  labs(x= "Gene Rank", y = "Z-score", title = "Pool CP1408 and CP1409 Z-Score Rank") +
+  scale_x_discrete(expand=expansion(add=20)) +
+  geom_hline(yintercept=2, linetype= "dashed", size=0.25) +
+  geom_hline(yintercept=-2, linetype="dashed", size=0.25) +
+  theme(legend.position="none",
+    axis.title.x = element_text(size = 10),
+    axis.title.y = element_text(size = 10),
+    axis.text.x = element_blank(),
+    axis.text.y = element_text(size = 8),
+    axis.ticks.length = unit(.05, "in"),
+    axis.ticks.x = element_blank(),
+    plot.title = element_text(size = 12),
+    panel.background = element_blank(),
+    panel.spacing = unit(.25, "in"),
+    plot.margin=margin(.2,.2,.2,.2,"in"),
+    panel.border=element_rect(fill="NA", color="black", size=.75))
+
+ggsave(here("Pool CP1408 and CP1409 Significant Z-Score Rank Plot.pdf"),
+    device="pdf",
+    units="in",
+    height=5,
+    width=5)
+
+ggplot() +
+  geom_point(data = L2FC_wide_Dummy2, aes(L2FC, log10pval), shape=16, size=.75, color="#D3D3D3") +
+  geom_point(data = Dummy_NT2, aes(L2FC, log10pval), shape = 16, size = 1, color="#FF00FF") +
+  scale_x_continuous(limits = c(-4,4), breaks = seq(-4,4,1)) +
+  scale_y_continuous(limits = c(0,6), breaks = seq(0,6,1)) +
+  labs(title = "Pool CP1408 and CP1409\nNo Site Control Guides",
+      x=expression(Log[2]*" Fold Change CD19 / EGFRv3"),
+      y=expression(-log[10]*" p-value")) +
+  theme(legend.position="none",
+      axis.title.x = element_text(size = 10),
+      axis.title.y = element_text(size = 10),
+      axis.text.x = element_text(size = 8),
+      axis.text.y = element_text(size = 8),
+      axis.ticks.length = unit(.05, "in"),
+      plot.title = element_text(size = 12),
+      panel.background = element_blank(),
+      plot.margin=margin(.2,.2,.2,.2,"in"),
+      panel.border=element_rect(fill="NA", color="black", size=.75))
+
+ggsave(here("QC","Pool CP1408 and CP1409 No Site Dummy Volcano Plot.pdf"),
+    device="pdf",
+    units="in",
+    height=5,
+    width=5)
+
+ggplot() +
+  geom_point(data = L2FC_wide_Dummy2, aes(L2FC, log10pval), shape=16, size=.75, color="#D3D3D3") +
+  geom_point(data = Dummy_IG2, aes(L2FC, log10pval), shape = 16, size = 1, color="#FF00FF") +
+  scale_x_continuous(limits = c(-4,4), breaks = seq(-4,4,1)) +
+  scale_y_continuous(limits = c(0,6), breaks = seq(0,6,1)) +
+  labs(title = "Pool CP1408 and CP1409\nIntergenic Control Guides",
+      x=expression(Log[2]*" Fold Change CD19 / EGFRv3"),
+      y=expression(-log[10]*" p-value")) +
+  theme(legend.position="none",
+      axis.title.x = element_text(size = 10),
+      axis.title.y = element_text(size = 10),
+      axis.text.x = element_text(size = 8),
+      axis.text.y = element_text(size = 8),
+      axis.ticks.length = unit(.05, "in"),
+      plot.title = element_text(size = 12),
+      panel.background = element_blank(),
+      plot.margin=margin(.2,.2,.2,.2,"in"),
+      panel.border=element_rect(fill="NA", color="black", size=.75))
+
+ggsave(here("QC","Pool CP1408 and CP1409 Intergenic Dummy Volcano Plot.pdf"),
+    device="pdf",
+    units="in",
+    height=5,
+    width=5)
+
+ggplot() +
+  geom_point(data=L2FC_wide_Dummy2, aes(x=reorder(Gene, -zscore), y=zscore), shape=16, size=0.75, color="#D3D3D3") +
+  geom_point(data=Dummy_NT2, aes(x=reorder(Gene, -zscore), y=zscore), shape=16, size=0.75, color="#FF00FF") +
+  geom_text_repel(data = Dummy_NT2, aes(x=reorder(Gene, -zscore), y=zscore), size = 1.5, label = Dummy_NT2$Gene, force = 50, force_pull = 1.5, direction = "both", max.overlaps = 10, box.padding = .05, segment.size = 0.2, min.segment.length = .2, max.time = 10, nudge_x = 1, nudge_y = 1) +
+  labs(x= "Gene Rank", y = "Z-score", title = "Pool CP1408 and CP1409 Z-Score Rank") +
+  scale_x_discrete(expand=expansion(add=20)) +
+  geom_hline(yintercept=2, linetype= "dashed", size=0.25) +
+  geom_hline(yintercept=-2, linetype="dashed", size=0.25) +
+  theme(legend.position="none",
+    axis.title.x = element_text(size = 10),
+    axis.title.y = element_text(size = 10),
+    axis.text.x = element_blank(),
+    axis.text.y = element_text(size = 8),
+    axis.ticks.length = unit(.05, "in"),
+    axis.ticks.x = element_blank(),
+    plot.title = element_text(size = 12),
+    panel.background = element_blank(),
+    panel.spacing = unit(.25, "in"),
+    plot.margin=margin(.2,.2,.2,.2,"in"),
+    panel.border=element_rect(fill="NA", color="black", size=.75))
+
+ggsave(here("Pool CP1408 and CP1409 No Site Dummy Z-Score Rank Plot.pdf"),
+    device="pdf",
+    units="in",
+    height=5,
+    width=5)
+
+ggplot() +
+  geom_point(data=L2FC_wide_Dummy2, aes(x=reorder(Gene, -zscore), y=zscore), shape=16, size=0.75, color="#D3D3D3") +
+  geom_point(data=Dummy_IG2, aes(x=reorder(Gene, -zscore), y=zscore), shape=16, size=0.75, color="#FF00FF") +
+  geom_text_repel(data = Dummy_IG2, aes(x=reorder(Gene, -zscore), y=zscore), size = 1.5, label = Dummy_IG2$Gene, force = 50, force_pull = 1.5, direction = "both", max.overlaps = 10, box.padding = .05, segment.size = 0.2, min.segment.length = .2, max.time = 10, nudge_x = 1, nudge_y = 1) +
+  labs(x= "Gene Rank", y = "Z-score", title = "Pool CP1408 and CP1409 Z-Score Rank") +
+  scale_x_discrete(expand=expansion(add=20)) +
+  geom_hline(yintercept=2, linetype= "dashed", size=0.25) +
+  geom_hline(yintercept=-2, linetype="dashed", size=0.25) +
+  theme(legend.position="none",
+    axis.title.x = element_text(size = 10),
+    axis.title.y = element_text(size = 10),
+    axis.text.x = element_blank(),
+    axis.text.y = element_text(size = 8),
+    axis.ticks.length = unit(.05, "in"),
+    axis.ticks.x = element_blank(),
+    plot.title = element_text(size = 12),
+    panel.background = element_blank(),
+    panel.spacing = unit(.25, "in"),
+    plot.margin=margin(.2,.2,.2,.2,"in"),
+    panel.border=element_rect(fill="NA", color="black", size=.75))
+
+ggsave(here("Pool CP1408 and CP1409 Intergenic Dummy Z-Score Rank Plot.pdf"),
+    device="pdf",
+    units="in",
+    height=5,
+    width=5)
 ```
